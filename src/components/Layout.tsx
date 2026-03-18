@@ -83,7 +83,7 @@ export default function Layout() {
 
           {/* Wordmark */}
           <span className="text-lg font-semibold tracking-tight">
-            <span className="text-[var(--accent)]">Auto</span>Accounting
+            <span className="text-[var(--accent)]">Auto</span>Account
           </span>
         </div>
 
@@ -155,7 +155,7 @@ export default function Layout() {
           {/* Sidebar footer */}
           <div className="px-4 py-3 border-t border-[var(--border)]">
             <p className="text-[10px] font-medium tracking-widest uppercase text-[var(--text-muted)]">
-              AutoAccounting v1.0
+              AutoAccount v1.0
             </p>
           </div>
         </aside>
