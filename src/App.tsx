@@ -11,6 +11,7 @@ import TrialBalance from "./pages/TrialBalance";
 import IncomeStatement from "./pages/IncomeStatement";
 import BalanceSheet from "./pages/BalanceSheet";
 import CashFlowStatement from "./pages/CashFlowStatement";
+import FinancialHealth from "./pages/FinancialHealth";
 import NotFound from "./components/NotFound";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="income-statement" element={<IncomeStatement />} />
           <Route path="balance-sheet" element={<BalanceSheet />} />
           <Route path="cash-flow" element={<CashFlowStatement />} />
+          <Route path="financial-health" element={<FinancialHealth />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

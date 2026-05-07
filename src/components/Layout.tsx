@@ -18,6 +18,7 @@ import {
   Info,
   XCircle,
   ChevronRight,
+  Activity
 } from "lucide-react";
 import { useUIStore } from "../store/uiStore";
 import type { Alert } from "../store/uiStore";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { label: "Income Statement",       path: "/income-statement", Icon: TrendingUp    },
   { label: "Balance Sheet",          path: "/balance-sheet",    Icon: LayoutList    },
   { label: "Statement of Cash Flow", path: "/cash-flow",        Icon: ArrowLeftRight},
+  { label: "Financial Health",       path: "/financial-health", Icon: Activity    },
 ];
 
 // ─── Alert icon map ────────────────────────────────────────────────────────────
