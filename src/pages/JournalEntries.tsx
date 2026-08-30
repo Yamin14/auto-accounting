@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, BookOpen } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { BookOpen, Search } from "lucide-react";
 import { useJournalStore } from "../store/journalStore";
 import defaultAccounts from "../data/defaultAccounts";
 import type { JournalEntry } from "../types";
@@ -19,75 +19,49 @@ const fmtDate = (iso: string) =>
     day: "numeric",
   });
 
-const entryTotal = (entry: JournalEntry) =>
+const entryDebitTotal = (entry: JournalEntry) =>
   entry.debits.reduce((s, l) => s + l.amount, 0);
 
-// ─── Expanded detail row ──────────────────────────────────────────────────────
+const entryCreditTotal = (entry: JournalEntry) =>
+  entry.credits.reduce((s, l) => s + l.amount, 0);
 
-function EntryDetail({ entry }: { entry: JournalEntry }) {
-  return (
-    <div className="px-6 pb-5 pt-1 space-y-3 bg-[var(--bg-base)] border-t border-[var(--border)]">
-      {/* Ledger-style lines */}
-      <div className="rounded-lg border border-[var(--border)] overflow-hidden text-sm">
-        {/* Debits */}
-        {entry.debits.map((line) => (
-          <div
-            key={line.id}
-            className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)] last:border-0"
-          >
-            <span className="text-[var(--text-primary)]">{accountName(line.accountId)}</span>
-            <div className="flex gap-16 text-right">
-              <span className="font-mono text-[var(--text-primary)] w-24">{fmt(line.amount)}</span>
-              <span className="font-mono text-[var(--text-muted)] w-24">—</span>
-            </div>
-          </div>
-        ))}
-        {/* Credits */}
-        {entry.credits.map((line) => (
-          <div
-            key={line.id}
-            className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)] last:border-0 pl-10"
-          >
-            <span className="text-[var(--text-secondary)] italic">{accountName(line.accountId)}</span>
-            <div className="flex gap-16 text-right">
-              <span className="font-mono text-[var(--text-muted)] w-24">—</span>
-              <span className="font-mono text-[var(--text-primary)] w-24">{fmt(line.amount)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+// Everything about an entry that search can match against, lowercased once.
+const entrySearchText = (entry: JournalEntry) => {
+  const accountNames = [
+    ...entry.debits.map((l) => accountName(l.accountId)),
+    ...entry.credits.map((l) => accountName(l.accountId)),
+  ];
+  const amounts = [
+    ...entry.debits.map((l) => l.amount),
+    ...entry.credits.map((l) => l.amount),
+  ];
 
-      {/* Description */}
-      {entry.description && (
-        <p className="text-xs text-[var(--text-muted)] italic px-1">
-          Memo: {entry.description}
-        </p>
-      )}
-
-      {/* Column labels */}
-      <div className="flex justify-end gap-16 text-[10px] uppercase tracking-wider text-[var(--text-muted)] pr-1">
-        <span className="w-24 text-right">Debit</span>
-        <span className="w-24 text-right">Credit</span>
-      </div>
-    </div>
-  );
-}
+  return [
+    fmtDate(entry.date),
+    entry.date,
+    entry.description ?? "",
+    ...accountNames,
+    ...amounts.map((a) => fmt(a)),
+    ...amounts.map((a) => String(a)),
+  ]
+    .join(" ")
+    .toLowerCase();
+};
 
 // ─── Journal Entries page ─────────────────────────────────────────────────────
 
 export default function JournalEntries() {
   const entries = useJournalStore((s) => s.entries);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
 
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const filteredEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const ordered = [...entries].reverse();
+    if (!q) return ordered;
+    return ordered.filter((entry) => entrySearchText(entry).includes(q));
+  }, [entries, query]);
 
-  // Empty state
+  // Empty state (no entries at all)
   if (entries.length === 0) {
     return (
       <div className="max-w-3xl mx-auto">
@@ -109,82 +83,120 @@ export default function JournalEntries() {
         </span>
       </div>
 
-      {/* Table header */}
-      <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-4 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">
-        <span>Date / Description</span>
-        <span>Accounts</span>
-        <span className="text-right">Amount</span>
-        <span />
+      {/* Search */}
+      <div className="relative">
+        <Search
+          size={15}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+        />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by date, account, amount, or narration…"
+          className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--border)]"
+        />
       </div>
 
-      {/* Entry rows */}
-      <div className="space-y-2">
-        {[...entries].reverse().map((entry) => {
-          const isOpen = expanded.has(entry.id);
-          const total = entryTotal(entry);
-          const accountNames = [
-            ...entry.debits.map((l) => accountName(l.accountId)),
-            ...entry.credits.map((l) => accountName(l.accountId)),
-          ];
+      {/* Entries table */}
+      {filteredEntries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-2 text-[var(--text-muted)]">
+          <Search size={28} strokeWidth={1.2} />
+          <p className="text-sm">No entries match "{query}".</p>
+        </div>
+      ) : (
+        <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl overflow-hidden">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-[var(--border)]">
+                <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium w-28">
+                  Date
+                </th>
+                <th className="text-left px-4 py-2.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">
+                  Account
+                </th>
+                <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium w-28">
+                  Debit
+                </th>
+                <th className="text-right px-4 py-2.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium w-28">
+                  Credit
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEntries.map((entry) => {
+                const lineCount = entry.debits.length + entry.credits.length;
+                const debitTotal = entryDebitTotal(entry);
+                const creditTotal = entryCreditTotal(entry);
 
-          return (
-            <div
-              key={entry.id}
-              className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl overflow-hidden"
-            >
-              {/* Summary row */}
-              <button
-                onClick={() => toggle(entry.id)}
-                className="w-full text-left px-4 py-3.5 grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center hover:bg-[var(--bg-hover)] transition-colors"
-              >
-                {/* Date + description */}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {fmtDate(entry.date)}
-                  </p>
-                  {entry.description ? (
-                    <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                      {entry.description}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-[var(--text-muted)]/50 italic mt-0.5">No memo</p>
-                  )}
-                </div>
+                return (
+                  <Fragment key={entry.id}>
+                    {/* Debit lines */}
+                    {entry.debits.map((line, i) => (
+                      <tr key={line.id} className="border-t border-[var(--border)]">
+                        {/* Date only on the first line of the entry */}
+                        {i === 0 ? (
+                          <td
+                            rowSpan={lineCount}
+                            className="px-4 py-2.5 align-top text-sm font-medium text-[var(--text-primary)] whitespace-nowrap"
+                          >
+                            {fmtDate(entry.date)}
+                          </td>
+                        ) : null}
+                        <td className="px-4 py-2.5 text-sm text-[var(--text-primary)]">
+                          {accountName(line.accountId)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-sm text-[var(--text-primary)]">
+                          {fmt(line.amount)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-sm text-[var(--text-muted)]">
+                          —
+                        </td>
+                      </tr>
+                    ))}
 
-                {/* Accounts pill list */}
-                <div className="hidden sm:flex flex-wrap gap-1 max-w-xs justify-end">
-                  {accountNames.slice(0, 3).map((name, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] bg-[var(--bg-base)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--text-muted)] truncate max-w-[120px]"
-                    >
-                      {name}
-                    </span>
-                  ))}
-                  {accountNames.length > 3 && (
-                    <span className="text-[10px] bg-[var(--bg-base)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--text-muted)]">
-                      +{accountNames.length - 3}
-                    </span>
-                  )}
-                </div>
+                    {/* Credit lines */}
+                    {entry.credits.map((line) => (
+                      <tr key={line.id} className="border-t border-[var(--border)]">
+                        <td className="px-4 py-2.5 text-sm text-[var(--text-secondary)] italic pl-8">
+                          {accountName(line.accountId)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-sm text-[var(--text-muted)]">
+                          —
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-sm text-[var(--text-primary)]">
+                          {fmt(line.amount)}
+                        </td>
+                      </tr>
+                    ))}
 
-                {/* Total */}
-                <span className="font-mono text-sm text-[var(--text-primary)] text-right">
-                  {fmt(total)}
-                </span>
+                    {/* Totals */}
+                    <tr className="border-t border-[var(--border)] font-medium">
+                      <td />
+                      <td className="px-4 py-2 text-right text-xs uppercase tracking-wider text-[var(--text-muted)]">
+                        Total
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-sm text-[var(--text-primary)]">
+                        {fmt(debitTotal)}
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-sm text-[var(--text-primary)]">
+                        {fmt(creditTotal)}
+                      </td>
+                    </tr>
 
-                {/* Chevron */}
-                <span className="text-[var(--text-muted)]">
-                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </span>
-              </button>
-
-              {/* Expanded detail */}
-              {isOpen && <EntryDetail entry={entry} />}
-            </div>
-          );
-        })}
-      </div>
+                    {/* Narration */}
+                    <tr className="border-t border-[var(--border)] bg-[var(--bg-base)]">
+                      <td colSpan={4} className="px-4 py-2 text-xs text-[var(--text-muted)] italic">
+                        {entry.description ? `Narration: ${entry.description}` : "No narration"}
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
