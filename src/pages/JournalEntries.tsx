@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { BookOpen, Search } from "lucide-react";
+import { BookOpen, Search, X } from "lucide-react";
 import { useJournalStore } from "../store/journalStore";
 import defaultAccounts from "../data/defaultAccounts";
 import type { JournalEntry } from "../types";
@@ -18,6 +18,9 @@ const fmtDate = (iso: string) =>
     month: "short",
     day: "numeric",
   });
+
+// Compare on the YYYY-MM-DD part so the "to" date is inclusive of the whole day
+const dayOf = (iso: string) => iso.slice(0, 10);
 
 const entryDebitTotal = (entry: JournalEntry) =>
   entry.debits.reduce((s, l) => s + l.amount, 0);
@@ -48,18 +51,45 @@ const entrySearchText = (entry: JournalEntry) => {
     .toLowerCase();
 };
 
+const dateInputClass = [
+  "w-full px-3 py-2 text-sm rounded-lg",
+  "bg-[var(--bg-surface)] border border-[var(--border)]",
+  "text-[var(--text-primary)]",
+  "focus:outline-none focus:ring-1 focus:ring-[var(--border)]",
+].join(" ");
+
+const labelClass = "block text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1";
+
 // ─── Journal Entries page ─────────────────────────────────────────────────────
 
 export default function JournalEntries() {
   const entries = useJournalStore((s) => s.entries);
   const [query, setQuery] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  const invalidRange = !!from && !!to && from > to;
+  const hasFilters = !!(query || from || to);
+
+  const resetFilters = () => {
+    setQuery("");
+    setFrom("");
+    setTo("");
+  };
 
   const filteredEntries = useMemo(() => {
+    if (invalidRange) return [];
     const q = query.trim().toLowerCase();
     const ordered = [...entries].reverse();
-    if (!q) return ordered;
-    return ordered.filter((entry) => entrySearchText(entry).includes(q));
-  }, [entries, query]);
+
+    return ordered.filter((entry) => {
+      const day = dayOf(entry.date);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      if (q && !entrySearchText(entry).includes(q)) return false;
+      return true;
+    });
+  }, [entries, query, from, to, invalidRange]);
 
   // Empty state (no entries at all)
   if (entries.length === 0) {
@@ -79,30 +109,77 @@ export default function JournalEntries() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-[var(--text-primary)]">Journal Entries</h1>
         <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] border border-[var(--border)] rounded-full px-3 py-1">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"}
+          {filteredEntries.length === entries.length
+            ? `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`
+            : `${filteredEntries.length} of ${entries.length} entries`}
         </span>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search
-          size={15}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-        />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by date, account, amount, or narration…"
-          className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--border)]"
-        />
+      {/* Filters */}
+      <div className="space-y-3">
+        {/* Search */}
+        <div className="relative">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by date, account, amount, or narration…"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--border)]"
+          />
+        </div>
+
+        {/* Date range */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>From</label>
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              className={dateInputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>To</label>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className={dateInputClass}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between min-h-[1rem]">
+          <p className="text-xs text-rose-400">
+            {invalidRange ? "“From” date must be before “To” date." : ""}
+          </p>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              <X size={12} /> Reset filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Entries table */}
       {filteredEntries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-2 text-[var(--text-muted)]">
           <Search size={28} strokeWidth={1.2} />
-          <p className="text-sm">No entries match "{query}".</p>
+          <p className="text-sm">
+            {query ? `No entries match "${query}"` : "No entries match your filters"}
+            {(from || to) && query ? " in this date range." : query ? "." : "."}
+          </p>
         </div>
       ) : (
         <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl overflow-hidden">
